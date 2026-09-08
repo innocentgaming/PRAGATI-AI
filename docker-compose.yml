@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: pragati_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: pragati_user
+      POSTGRES_PASSWORD: pragati_password
+      POSTGRES_DB: pragati_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pragati_user -d pragati_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    container_name: pragati_api
+    restart: always
+    environment:
+      DATABASE_URL: postgresql://pragati_user:pragati_password@postgres:5432/pragati_db
+      SECRET_KEY: pragati-ai-super-secret-key-for-sih-26103-mospi
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >
+      sh -c "python database/seed_data.py &&
+             uvicorn apps.api.main:app --host 0.0.0.0 --port 8000"
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web
+    container_name: pragati_web
+    restart: always
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000/api
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:

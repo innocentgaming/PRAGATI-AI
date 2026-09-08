@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+pragati_ai.db
+.pytest_cache/
+apps/web/node_modules/
+apps/web/.next/
+apps/web/out/
+apps/web/.env.local
+.DS_Store
+.env
