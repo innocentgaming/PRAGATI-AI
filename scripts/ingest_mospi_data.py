@@ -268,7 +268,7 @@ def run_ingestion():
         # Match Ministry
         m_obj = None
         for m_name, m_inst in ministry_map.items():
-            if m_name.lower() in p_data["ministry"].lower() or m_inst.code.lower() in p_data["ministry"].lower():
+            if m_name.lower() in p_data.get("ministry", "").lower() or m_inst.code.lower() in p_data.get("ministry", "").lower():
                 m_obj = m_inst
                 break
         if not m_obj:
@@ -277,11 +277,11 @@ def run_ingestion():
         # Match Sector
         s_obj = None
         for s_name, s_inst in sector_map.items():
-            if s_name.lower() in p_data["sector"].lower() or p_data["sector"].lower() in s_name.lower():
+            if s_name.lower() in p_data.get("sector", "").lower() or p_data.get("sector", "").lower() in s_name.lower():
                 s_obj = s_inst
                 break
         if not s_obj:
-            s_obj = sector_map.get(p_data["sector"], sector_map["Roads & Highways"])
+            s_obj = sector_map.get(p_data.get("sector", ""), sector_map["Roads & Highways"])
 
         # Match Contractor / Agency
         agency_clean = p_data["agency"]

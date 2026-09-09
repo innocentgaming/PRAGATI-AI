@@ -2,430 +2,481 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { fetchExecutiveKPIs, fetchProjects, fetchSectorAnalytics, fetchMinistryAnalytics, fetchStateAnalytics, ProjectSummary, ExecutiveKPIs } from '@/lib/api';
-import { RiskBadge } from '@/components/RiskBadge';
-import { InterventionModal } from '@/components/InterventionModal';
-import { 
-  Building2, AlertTriangle, TrendingUp, Clock, 
-  ShieldAlert, ArrowUpRight, CheckCircle2, ChevronRight, Activity, DollarSign, Filter
-} from 'lucide-react';
-import { 
-  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, 
-  Tooltip, PieChart, Pie, Cell, LineChart, Line, CartesianGrid, Legend 
-} from 'recharts';
+import { fetchExecutiveKPIs, fetchProjects, fetchSectorAnalytics, ProjectSummary, ExecutiveKPIs } from '@/lib/api';
 
 export default function ExecutiveDashboard() {
   const [kpis, setKpis] = useState<ExecutiveKPIs | null>(null);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [sectors, setSectors] = useState<any[]>([]);
-  const [ministries, setMinistries] = useState<any[]>([]);
-  const [states, setStates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedInterventionProject, setSelectedInterventionProject] = useState<ProjectSummary | null>(null);
+
+  // Toast State
+  const [toastVisible, setToastVisible] = useState(false);
+  const [toastProjectName, setToastProjectName] = useState('');
 
   useEffect(() => {
     async function loadData() {
       setLoading(true);
-      const [kpiData, projData, secData, minData, stData] = await Promise.all([
+      const [kpiData, projData, secData] = await Promise.all([
         fetchExecutiveKPIs(),
         fetchProjects(),
         fetchSectorAnalytics(),
-        fetchMinistryAnalytics(),
-        fetchStateAnalytics()
       ]);
       setKpis(kpiData);
       setProjects(projData);
       setSectors(secData);
-      setMinistries(minData);
-      setStates(stData);
       setLoading(false);
     }
     loadData();
   }, []);
 
-  const riskPieData = [
-    { name: 'Low Risk (≤30)', value: kpis?.low_risk_projects || 34, color: '#059669' },
-    { name: 'Medium Risk (31-60)', value: kpis?.medium_risk_projects || 42, color: '#D97706' },
-    { name: 'High Risk (61-80)', value: (kpis?.high_risk_projects || 24) - (kpis?.critical_projects || 12), color: '#EA580C' },
-    { name: 'Critical (>80)', value: kpis?.critical_projects || 12, color: '#DC2626' },
-  ];
+  const triggerInterventionModal = (projectName: string) => {
+    setToastProjectName(projectName);
+    setToastVisible(true);
+    setTimeout(() => setToastVisible(false), 3200);
+  };
 
-  // Overrun & Delay Trend synthetic monthly data
-  const trendData = [
-    { month: 'Oct 2025', cost_overrun_cr: 32000, avg_delay_mos: 9.8 },
-    { month: 'Nov 2025', cost_overrun_cr: 35400, avg_delay_mos: 10.2 },
-    { month: 'Dec 2025', cost_overrun_cr: 38900, avg_delay_mos: 10.7 },
-    { month: 'Jan 2026', cost_overrun_cr: 41200, avg_delay_mos: 11.0 },
-    { month: 'Feb 2026', cost_overrun_cr: 43500, avg_delay_mos: 11.2 },
-    { month: 'Mar 2026 (Live)', cost_overrun_cr: 44100, avg_delay_mos: 11.4 },
-  ];
+  const totalProjects = kpis?.total_projects || 0;
+  const lowRiskCount = kpis?.low_risk_projects || 0;
+  const mediumRiskCount = kpis?.medium_risk_projects || 0;
+  const criticalRiskCount = kpis?.critical_projects || 0;
+  const highRiskCount = Math.max(0, (kpis?.high_risk_projects || 0) - criticalRiskCount);
+
+  // Calculate percentages for the donut chart based on total projects
+  const getDashArray = (count: number) => {
+    if (totalProjects === 0) return 0;
+    const percentage = count / totalProjects;
+    return percentage * 219.9; // 219.9 is the circumference of r=35
+  };
+
+  const lowRiskDash = getDashArray(lowRiskCount);
+  const mediumRiskDash = getDashArray(mediumRiskCount);
+  const highRiskDash = getDashArray(highRiskCount);
+  const criticalRiskDash = getDashArray(criticalRiskCount);
+
+  const formatCr = (val: number) => `₹${(val / 1000).toFixed(1)}k Cr`;
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col w-full gap-unit-lg pb-unit-2xl">
       
-      {/* Official Government Header Banner */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-200">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-              National Infrastructure Executive Dashboard
-            </h1>
-            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
-              MoSPI IPMD • PAIMANA / OCMS
-            </span>
+      {/* Executive Hero & Title Banner */}
+      <section className="flex flex-col gap-unit-md bg-surface-container-lowest p-unit-lg rounded-xl shadow-sm">
+        <div className="flex items-center justify-between gap-unit-xs">
+          <div className="inline-flex items-center gap-unit-xs px-unit-sm py-unit-2xs rounded-full bg-surface-container text-secondary font-label-sm text-label-sm tracking-wide uppercase">
+            <span className="material-symbols-outlined text-[14px]">assured_workload</span>
+            <span>MoSPI IPMD • PAIMANA / OCMS</span>
           </div>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Central Sector Projects (₹150 Crore & Above) • Machine Learning Predictive Intelligence System
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-risk-low-subtle text-risk-low font-label-sm text-label-sm">
+            <span className="w-1.5 h-1.5 rounded-full bg-risk-low animate-pulse"></span>
+            <span>v2.0 Blended • Live</span>
+          </div>
+        </div>
+        <div className="flex flex-col gap-unit-2xs">
+          <h1 className="font-headline-lg text-headline-lg text-text-primary tracking-tight">
+            National Infrastructure Executive Dashboard
+          </h1>
+          <p className="font-body-sm text-body-sm text-text-secondary leading-relaxed">
+            Central Sector Projects (≥ ₹150 Cr) • Machine Learning Predictive Intelligence System
           </p>
         </div>
+        
+        {/* AI Quick Action */}
+        <Link 
+          href="/assistant"
+          className="w-full flex items-center justify-between px-unit-lg py-unit-md rounded-xl bg-gradient-to-r from-secondary to-secondary-container text-on-secondary shadow-md hover:shadow-lg transition-all active:scale-[0.99] group"
+        >
+          <div className="flex items-center gap-unit-sm">
+            <div className="w-8 h-8 rounded-lg bg-on-secondary/20 flex items-center justify-center">
+              <span className="material-symbols-outlined text-[20px]">smart_toy</span>
+            </div>
+            <div className="flex flex-col">
+              <span className="font-headline-sm text-headline-sm text-on-secondary">Ask PRAGATI Assistant</span>
+              <span className="font-label-sm text-label-sm text-on-secondary/80">Query cost forecasts, bottlenecks & delays</span>
+            </div>
+          </div>
+          <span className="material-symbols-outlined text-[22px] transition-transform group-hover:translate-x-1">north_east</span>
+        </Link>
+      </section>
 
-        <div className="flex items-center gap-2">
-          <Link
-            href="/assistant"
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-md text-xs font-semibold shadow-sm transition-colors"
-          >
-            <span>Ask PRAGATI Assistant</span>
-            <ArrowUpRight className="h-3.5 w-3.5" />
+      {/* High-Impact Executive KPI Grid (2-column layout) */}
+      <section className="grid grid-cols-2 gap-kpi-grid-gutter">
+        {/* 1. Total Projects */}
+        <div className="flex flex-col justify-between p-unit-md rounded-xl bg-surface-container-low shadow-sm">
+          <div className="flex items-start justify-between">
+            <span className="font-label-md text-label-md text-text-secondary uppercase">Total Monitored</span>
+            <span className="material-symbols-outlined text-secondary text-[20px]">apartment</span>
+          </div>
+          <div className="my-unit-xs">
+            <span className="font-kpi-value text-kpi-value text-text-primary tracking-tight">{totalProjects}</span>
+          </div>
+          <div className="flex items-center gap-1 font-body-sm text-body-sm text-secondary font-medium">
+            <span>{formatCr(kpis?.total_original_cost || 0)}</span>
+            <span className="text-text-tertiary">Outlay</span>
+          </div>
+        </div>
+
+        {/* 2. Cost Exposure */}
+        <div className="flex flex-col justify-between p-unit-md rounded-xl bg-risk-critical-subtle shadow-sm">
+          <div className="flex items-start justify-between">
+            <span className="font-label-md text-label-md text-risk-critical uppercase">Cost Exposure</span>
+            <span className="material-symbols-outlined text-risk-critical text-[20px]">trending_up</span>
+          </div>
+          <div className="my-unit-xs">
+            <span className="font-kpi-value text-kpi-value text-risk-critical tracking-tight">{formatCr(kpis?.predicted_cost_exposure || 0)}</span>
+          </div>
+          <div className="inline-flex items-center self-start px-2 py-0.5 rounded-full bg-error-container text-on-error-container font-label-sm text-label-sm">
+            <span>Forecast Overrun</span>
+          </div>
+        </div>
+
+        {/* 3. Critical Risk (>80) */}
+        <div className="flex flex-col justify-between p-unit-md rounded-xl bg-surface-container-lowest shadow-sm">
+          <div className="flex items-start justify-between">
+            <span className="font-label-md text-label-md text-text-secondary uppercase">Critical (&gt;80)</span>
+            <span className="material-symbols-outlined text-risk-critical text-[20px]">emergency</span>
+          </div>
+          <div className="my-unit-xs">
+            <span className="font-kpi-value text-kpi-value text-risk-critical">{criticalRiskCount}</span>
+          </div>
+          <div className="inline-flex items-center self-start px-2 py-0.5 rounded-full bg-risk-critical-subtle text-risk-critical font-label-sm text-label-sm font-semibold">
+            <span className="w-1.5 h-1.5 rounded-full bg-risk-critical mr-1 animate-ping"></span>
+            <span>Urgent Review</span>
+          </div>
+        </div>
+
+        {/* 4. High Risk (61-80) */}
+        <div className="flex flex-col justify-between p-unit-md rounded-xl bg-surface-container-lowest shadow-sm">
+          <div className="flex items-start justify-between">
+            <span className="font-label-md text-label-md text-text-secondary uppercase">High Risk (61-80)</span>
+            <span className="material-symbols-outlined text-risk-high text-[20px]">warning</span>
+          </div>
+          <div className="my-unit-xs">
+            <span className="font-kpi-value text-kpi-value text-risk-high">{highRiskCount}</span>
+          </div>
+          <div className="inline-flex items-center self-start px-2 py-0.5 rounded-full bg-risk-high-subtle text-risk-high font-label-sm text-label-sm font-semibold">
+            <span>Escalated Tier</span>
+          </div>
+        </div>
+
+        {/* 5. Medium Risk (31-60) */}
+        <div className="flex flex-col justify-between p-unit-md rounded-xl bg-surface-container-lowest shadow-sm">
+          <div className="flex items-start justify-between">
+            <span className="font-label-md text-label-md text-text-secondary uppercase">Medium Risk</span>
+            <span className="material-symbols-outlined text-risk-medium text-[20px]">schedule</span>
+          </div>
+          <div className="my-unit-xs">
+            <span className="font-kpi-value text-kpi-value text-text-primary">{mediumRiskCount}</span>
+          </div>
+          <div className="inline-flex items-center self-start px-2 py-0.5 rounded-full bg-risk-medium-subtle text-text-secondary font-label-sm text-label-sm">
+            <span>Watchlist</span>
+          </div>
+        </div>
+
+        {/* 6. Low Risk (≤30) */}
+        <div className="flex flex-col justify-between p-unit-md rounded-xl bg-surface-container-lowest shadow-sm">
+          <div className="flex items-start justify-between">
+            <span className="font-label-md text-label-md text-text-secondary uppercase">Low Risk (≤30)</span>
+            <span className="material-symbols-outlined text-risk-low text-[20px]">check_circle</span>
+          </div>
+          <div className="my-unit-xs">
+            <span className="font-kpi-value text-kpi-value text-risk-low">{lowRiskCount}</span>
+          </div>
+          <div className="inline-flex items-center self-start px-2 py-0.5 rounded-full bg-risk-low-subtle text-risk-low font-label-sm text-label-sm">
+            <span>On Schedule</span>
+          </div>
+        </div>
+      </section>
+
+      {/* Active Alerts Micro-Bar */}
+      <div className="flex items-center justify-between px-unit-md py-unit-sm rounded-xl bg-surface-container-low shadow-sm">
+        <div className="flex items-center gap-unit-sm">
+          <span className="relative flex h-3 w-3">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-risk-critical opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-3 w-3 bg-risk-critical"></span>
+          </span>
+          <div className="flex flex-col">
+            <span className="font-headline-sm text-headline-sm text-text-primary">{kpis?.active_alerts_count || 0} Active System Alerts</span>
+            <span className="font-body-sm text-body-sm text-text-secondary">Auto-triggered by milestone slippage</span>
+          </div>
+        </div>
+        <Link href="/alerts" className="px-2.5 py-1 rounded-lg bg-surface-container-highest text-secondary font-label-sm text-label-sm uppercase">Inspect</Link>
+      </div>
+
+      {/* National Infrastructure Risk Distribution */}
+      <section className="flex flex-col p-unit-lg rounded-xl bg-surface-container-lowest shadow-sm">
+        <div className="flex flex-col gap-1 mb-unit-md">
+          <div className="flex items-center justify-between">
+            <h2 className="font-headline-md text-headline-md text-text-primary tracking-tight">Portfolio Risk Distribution</h2>
+            <span className="material-symbols-outlined text-text-tertiary text-[20px]">donut_large</span>
+          </div>
+          <p className="font-body-sm text-body-sm text-text-secondary">Segmented by composite 0–100 multi-factor risk score</p>
+        </div>
+
+        {/* Donut Chart & Stat Center */}
+        <div className="relative flex items-center justify-center my-unit-sm">
+          <svg className="w-48 h-48 -rotate-90 transform" viewBox="0 0 100 100">
+            {/* Low Risk */}
+            <circle cx="50" cy="50" fill="transparent" r="35" stroke="#10B981" strokeWidth="14" strokeDasharray={`${lowRiskDash} 219.9`} strokeDashoffset="0"></circle>
+            {/* Medium Risk */}
+            <circle cx="50" cy="50" fill="transparent" r="35" stroke="#EAB308" strokeWidth="14" strokeDasharray={`${mediumRiskDash} 219.9`} strokeDashoffset={`-${lowRiskDash}`}></circle>
+            {/* High Risk */}
+            <circle cx="50" cy="50" fill="transparent" r="35" stroke="#F59E0B" strokeWidth="14" strokeDasharray={`${highRiskDash} 219.9`} strokeDashoffset={`-${lowRiskDash + mediumRiskDash}`}></circle>
+            {/* Critical Risk */}
+            <circle cx="50" cy="50" fill="transparent" r="35" stroke="#EF4444" strokeWidth="14" strokeDasharray={`${criticalRiskDash} 219.9`} strokeDashoffset={`-${lowRiskDash + mediumRiskDash + highRiskDash}`}></circle>
+          </svg>
+          
+          <div className="absolute flex flex-col items-center justify-center pointer-events-none">
+            <span className="font-kpi-value text-kpi-value text-text-primary">{totalProjects}</span>
+            <span className="font-label-sm text-label-sm text-text-tertiary uppercase tracking-widest">Total Units</span>
+          </div>
+        </div>
+
+        {/* Interactive Grid Legend */}
+        <div className="grid grid-cols-2 gap-unit-sm mt-unit-sm">
+          <div className="flex items-center justify-between p-2 rounded-lg bg-surface-container-low">
+            <div className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-risk-low"></span>
+              <span className="font-label-sm text-label-sm text-text-secondary">Low (≤30)</span>
+            </div>
+            <span className="font-numeric-mono text-numeric-mono text-text-primary">{lowRiskCount} <span className="text-text-tertiary font-normal">({totalProjects ? Math.round((lowRiskCount/totalProjects)*100) : 0}%)</span></span>
+          </div>
+          <div className="flex items-center justify-between p-2 rounded-lg bg-surface-container-low">
+            <div className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-risk-medium"></span>
+              <span className="font-label-sm text-label-sm text-text-secondary">Medium</span>
+            </div>
+            <span className="font-numeric-mono text-numeric-mono text-text-primary">{mediumRiskCount} <span className="text-text-tertiary font-normal">({totalProjects ? Math.round((mediumRiskCount/totalProjects)*100) : 0}%)</span></span>
+          </div>
+          <div className="flex items-center justify-between p-2 rounded-lg bg-surface-container-low">
+            <div className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-risk-high"></span>
+              <span className="font-label-sm text-label-sm text-text-secondary">High (61-80)</span>
+            </div>
+            <span className="font-numeric-mono text-numeric-mono text-text-primary">{highRiskCount} <span className="text-text-tertiary font-normal">({totalProjects ? Math.round((highRiskCount/totalProjects)*100) : 0}%)</span></span>
+          </div>
+          <div className="flex items-center justify-between p-2 rounded-lg bg-surface-container-low">
+            <div className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-risk-critical"></span>
+              <span className="font-label-sm text-label-sm text-text-secondary">Critical (&gt;80)</span>
+            </div>
+            <span className="font-numeric-mono text-numeric-mono text-risk-critical">{criticalRiskCount} <span className="text-text-tertiary font-normal">({totalProjects ? Math.round((criticalRiskCount/totalProjects)*100) : 0}%)</span></span>
+          </div>
+        </div>
+      </section>
+
+      {/* Average Cost Overrun Escalation by Sector */}
+      <section className="flex flex-col p-unit-lg rounded-xl bg-surface-container-lowest shadow-sm">
+        <div className="flex items-center justify-between mb-unit-xs">
+          <h2 className="font-headline-md text-headline-md text-text-primary tracking-tight">Cost Escalation by Sector</h2>
+          <Link href="/analytics" className="flex items-center gap-0.5 font-label-md text-label-md text-secondary hover:underline">
+            <span>Full Analytics</span>
+            <span className="material-symbols-outlined text-[16px]">chevron_right</span>
           </Link>
         </div>
-      </div>
-
-      {/* Top 7 Core KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
+        <p className="font-body-sm text-body-sm text-text-secondary mb-unit-md">Comparative budget deviation across primary central domains</p>
         
-        {/* Total Projects */}
-        <div className="gov-card p-3.5 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-slate-500 text-[11px] font-medium">
-            <span>Total Projects</span>
-            <Building2 className="h-4 w-4 text-blue-600" />
-          </div>
-          <div className="mt-1.5">
-            <div className="text-xl font-bold text-slate-900">
-              {kpis?.total_projects || 112}
-            </div>
-            <div className="text-[10px] text-slate-500 mt-0.5 font-mono">
-              ₹{((kpis?.total_original_cost || 268400)/1000).toFixed(1)}k Cr Outlay
-            </div>
-          </div>
+        {/* Sector Progress Bars */}
+        <div className="flex flex-col gap-unit-md">
+          {sectors.slice(0, 4).map((sector, i) => {
+            const icons = ['train', 'add_road', 'local_gas_station', 'bolt'];
+            const colors = ['bg-risk-critical', 'bg-risk-high', 'bg-risk-medium', 'bg-secondary'];
+            const textColors = ['text-risk-critical', 'text-risk-high', 'text-risk-medium', 'text-secondary'];
+            const maxVal = Math.max(...sectors.map(s => s.avg_cost_overrun_pct));
+            const widthPct = maxVal > 0 ? (sector.avg_cost_overrun_pct / maxVal) * 100 : 0;
+            return (
+              <div key={i} className="flex flex-col gap-1.5">
+                <div className="flex justify-between items-center text-body-sm font-body-sm">
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-text-secondary text-[18px]">{icons[i % icons.length]}</span>
+                    <span className="text-text-primary font-medium">{sector.sector_name}</span>
+                  </div>
+                  <span className={`font-numeric-mono text-numeric-mono ${textColors[i % textColors.length]}`}>+{sector.avg_cost_overrun_pct.toFixed(1)}%</span>
+                </div>
+                <div className="w-full h-2 rounded-full bg-surface-container overflow-hidden">
+                  <div className={`h-full rounded-full ${colors[i % colors.length]}`} style={{ width: `${widthPct}%` }}></div>
+                </div>
+              </div>
+            );
+          })}
         </div>
+      </section>
 
-        {/* Critical Projects */}
-        <div className="gov-card p-3.5 bg-rose-50/50 border-rose-200 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-rose-700 text-[11px] font-semibold">
-            <span>Critical (&gt;80)</span>
-            <ShieldAlert className="h-4 w-4 text-rose-600" />
-          </div>
-          <div className="mt-1.5">
-            <div className="text-xl font-bold text-rose-700">
-              {kpis?.critical_projects || 12}
-            </div>
-            <div className="text-[10px] text-rose-600/80 mt-0.5">Urgent Review</div>
-          </div>
+      {/* National Cost Overrun & Schedule Delay Trajectory (SVG Chart) */}
+      <section className="flex flex-col p-unit-lg rounded-xl bg-surface-container-lowest shadow-sm">
+        <div className="flex flex-col gap-1 mb-unit-sm">
+          <span className="font-label-sm text-label-sm uppercase tracking-widest text-text-tertiary">Predictive ML Modeling</span>
+          <h2 className="font-headline-md text-headline-md text-text-primary tracking-tight">Escalation & Delay Trajectory</h2>
+          <p className="font-body-sm text-body-sm text-text-secondary">Historical escalation vs avg milestone lag across portfolios</p>
         </div>
-
-        {/* High Risk */}
-        <div className="gov-card p-3.5 bg-orange-50/50 border-orange-200 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-orange-700 text-[11px] font-semibold">
-            <span>High Risk (61-80)</span>
-            <AlertTriangle className="h-4 w-4 text-orange-600" />
-          </div>
-          <div className="mt-1.5">
-            <div className="text-xl font-bold text-orange-700">
-              {(kpis?.high_risk_projects || 24) - (kpis?.critical_projects || 12)}
-            </div>
-            <div className="text-[10px] text-orange-600/80 mt-0.5">Escalated Tier</div>
-          </div>
-        </div>
-
-        {/* Medium Risk */}
-        <div className="gov-card p-3.5 bg-amber-50/50 border-amber-200 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-amber-700 text-[11px] font-semibold">
-            <span>Medium Risk</span>
-            <Clock className="h-4 w-4 text-amber-600" />
-          </div>
-          <div className="mt-1.5">
-            <div className="text-xl font-bold text-amber-700">
-              {kpis?.medium_risk_projects || 42}
-            </div>
-            <div className="text-[10px] text-amber-600/80 mt-0.5">Watchlist</div>
-          </div>
-        </div>
-
-        {/* Low Risk / On Track */}
-        <div className="gov-card p-3.5 bg-emerald-50/50 border-emerald-200 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-emerald-700 text-[11px] font-semibold">
-            <span>Low Risk (≤30)</span>
-            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-          </div>
-          <div className="mt-1.5">
-            <div className="text-xl font-bold text-emerald-700">
-              {kpis?.low_risk_projects || 34}
-            </div>
-            <div className="text-[10px] text-emerald-600/80 mt-0.5">On Schedule</div>
-          </div>
-        </div>
-
-        {/* Active Alerts */}
-        <div className="gov-card p-3.5 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-slate-500 text-[11px] font-medium">
-            <span>Active Alerts</span>
-            <AlertTriangle className="h-4 w-4 text-rose-500" />
-          </div>
-          <div className="mt-1.5">
-            <div className="text-xl font-bold text-slate-900">
-              {kpis?.active_alerts_count || 86}
-            </div>
-            <div className="text-[10px] text-rose-600 mt-0.5 font-medium">Auto-Triggered</div>
-          </div>
-        </div>
-
-        {/* Predicted Cost Exposure */}
-        <div className="gov-card p-3.5 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-slate-500 text-[11px] font-medium">
-            <span>Cost Exposure</span>
-            <DollarSign className="h-4 w-4 text-amber-600" />
-          </div>
-          <div className="mt-1.5">
-            <div className="text-xl font-bold text-slate-900">
-              ₹{((kpis?.predicted_cost_exposure || 44100)/1000).toFixed(1)}k Cr
-            </div>
-            <div className="text-[10px] text-slate-500 mt-0.5">Forecast Overrun</div>
-          </div>
-        </div>
-
-      </div>
-
-      {/* Row 1: Risk Distribution (Donut) & Risk by Sector (Bar Chart) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         
-        {/* Risk Distribution Donut */}
-        <div className="gov-card p-5 flex flex-col justify-between">
-          <div>
-            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-              National Infrastructure Risk Distribution
-            </h3>
-            <p className="text-[11px] text-slate-500 mt-0.5">
-              Portfolio segmented by multi-factor 0–100 composite risk score
-            </p>
+        <div className="relative w-full h-52 mt-unit-xs">
+          <svg className="w-full h-full" fill="none" viewBox="0 0 320 180">
+            <defs>
+              <linearGradient id="costGrad" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0%" stopColor="#EF4444" stopOpacity="0.25"></stop>
+                <stop offset="100%" stopColor="#EF4444" stopOpacity="0.0"></stop>
+              </linearGradient>
+              <linearGradient id="delayGrad" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0%" stopColor="#F59E0B" stopOpacity="0.2"></stop>
+                <stop offset="100%" stopColor="#F59E0B" stopOpacity="0.0"></stop>
+              </linearGradient>
+            </defs>
+            <line opacity="0.5" stroke="#CBD5E1" strokeDasharray="3 3" x1="30" x2="310" y1="20" y2="20"></line>
+            <line opacity="0.5" stroke="#CBD5E1" strokeDasharray="3 3" x1="30" x2="310" y1="60" y2="60"></line>
+            <line opacity="0.5" stroke="#CBD5E1" strokeDasharray="3 3" x1="30" x2="310" y1="100" y2="100"></line>
+            <line opacity="0.5" stroke="#CBD5E1" strokeDasharray="3 3" x1="30" x2="310" y1="140" y2="140"></line>
+            
+            <text fill="#94A3B8" fontFamily="Inter" fontSize="9" textAnchor="end" x="24" y="24">60k</text>
+            <text fill="#94A3B8" fontFamily="Inter" fontSize="9" textAnchor="end" x="24" y="64">45k</text>
+            <text fill="#94A3B8" fontFamily="Inter" fontSize="9" textAnchor="end" x="24" y="104">30k</text>
+            <text fill="#94A3B8" fontFamily="Inter" fontSize="9" textAnchor="end" x="24" y="144">15k</text>
+            
+            <path d="M 35 110 Q 100 95 160 82 T 290 68 L 290 150 L 35 150 Z" fill="url(#costGrad)"></path>
+            <path d="M 35 110 Q 100 95 160 82 T 290 68" fill="none" stroke="#EF4444" strokeLinecap="round" strokeWidth="3"></path>
+            
+            <path d="M 35 90 Q 110 75 180 70 T 290 55 L 290 150 L 35 150 Z" fill="url(#delayGrad)"></path>
+            <path d="M 35 90 Q 110 75 180 70 T 290 55" fill="none" stroke="#F59E0B" strokeDasharray="5 3" strokeLinecap="round" strokeWidth="2.5"></path>
+            
+            <circle cx="290" cy="68" fill="#EF4444" r="4.5" stroke="#FFFFFF" strokeWidth="2"></circle>
+            <circle cx="290" cy="55" fill="#F59E0B" r="4.5" stroke="#FFFFFF" strokeWidth="2"></circle>
+            
+            <text fill="#94A3B8" fontFamily="Inter" fontSize="9" x="40" y="166">Nov 2025</text>
+            <text fill="#94A3B8" fontFamily="Inter" fontSize="9" textAnchor="middle" x="150" y="166">Jan 2026</text>
+            <text fill="#0051d5" fontFamily="Inter" fontSize="9" fontWeight="600" textAnchor="middle" x="285" y="166">Mar 2026 (Live)</text>
+          </svg>
+        </div>
+        
+        <div className="flex items-center justify-around pt-unit-sm mt-unit-xs">
+          <div className="flex items-center gap-2">
+            <span className="w-3 h-1 rounded-full bg-risk-critical"></span>
+            <span className="font-label-sm text-label-sm text-text-secondary">Cost Overrun (₹ Cr)</span>
           </div>
+          <div className="flex items-center gap-2">
+            <span className="w-3 h-1 rounded-full bg-risk-high"></span>
+            <span className="font-label-sm text-label-sm text-text-secondary">Avg Delay (Months)</span>
+          </div>
+        </div>
+      </section>
 
-          <div className="h-48 w-full my-2">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={riskPieData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={46}
-                  outerRadius={70}
-                  paddingAngle={3}
-                  dataKey="value"
+      {/* Geospatial Strategic Banner */}
+      <section className="relative overflow-hidden rounded-xl bg-gradient-to-br from-navy-deep to-navy-surface text-on-primary p-unit-lg shadow-md">
+        <div className="relative z-10 flex flex-col gap-unit-xs">
+          <div className="flex items-center gap-1.5 text-surface-dim">
+            <span className="material-symbols-outlined text-[16px]">public</span>
+            <span className="font-label-sm text-label-sm uppercase tracking-wider">Spatial Intelligence</span>
+          </div>
+          <h3 className="font-headline-md text-headline-md text-on-primary">Critical Portfolios by Ministry & State</h3>
+          <p className="font-body-sm text-body-sm text-slate-300 mb-unit-xs">Inter-ministerial GIS mapping with high density capital outlay in Rajasthan, Kerala, and UP.</p>
+          <Link href="/map" className="inline-flex items-center justify-center gap-2 w-full py-2.5 px-unit-md rounded-lg bg-surface-container-lowest text-text-primary font-headline-sm text-headline-sm shadow hover:bg-surface-container transition-colors active:scale-[0.98]">
+            <span className="material-symbols-outlined text-secondary text-[18px]">travel_explore</span>
+            <span>Open National Geospatial Map</span>
+            <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
+          </Link>
+        </div>
+      </section>
+
+      {/* Top Infrastructure Projects Requiring Immediate Intervention */}
+      <section className="flex flex-col gap-unit-md">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-unit-xs">
+            <div className="w-7 h-7 rounded-lg bg-risk-critical-subtle flex items-center justify-center text-risk-critical">
+              <span className="material-symbols-outlined text-[18px]">crisis_alert</span>
+            </div>
+            <div className="flex flex-col">
+              <h2 className="font-headline-sm text-headline-sm text-text-primary tracking-tight">Immediate Interventions</h2>
+              <span className="font-label-sm text-label-sm text-text-tertiary">Prioritized by Risk Score & Delay Factor</span>
+            </div>
+          </div>
+          <Link href="/projects" className="font-label-md text-label-md text-secondary font-semibold hover:underline">View All →</Link>
+        </div>
+
+        {projects.slice(0, 5).map(proj => {
+          const isCritical = proj.risk_level === 'CRITICAL';
+          const isHigh = proj.risk_level === 'HIGH';
+          
+          let badgeBg = 'bg-surface-container-low text-text-secondary';
+          let badgeText = `${proj.risk_level}`;
+          if (isCritical) { badgeBg = 'bg-risk-critical text-on-primary'; badgeText = `Risk: ${proj.overall_risk_score} • Critical`; }
+          else if (isHigh) { badgeBg = 'bg-risk-high text-on-primary'; badgeText = `Risk: ${proj.overall_risk_score} • High`; }
+          else if (proj.risk_level === 'MEDIUM') { badgeBg = 'bg-risk-medium text-on-primary'; badgeText = `Risk: ${proj.overall_risk_score} • Medium`; }
+
+          let costColor = 'text-text-primary';
+          if (isCritical) costColor = 'text-risk-critical';
+          else if (isHigh) costColor = 'text-risk-high';
+
+          return (
+            <article key={proj.id} className="flex flex-col p-unit-md rounded-xl bg-surface-container-lowest shadow-sm gap-unit-sm">
+              <div className="flex items-start justify-between gap-unit-xs">
+                <div className="flex flex-col min-w-0">
+                  <span className="font-label-sm text-label-sm text-text-tertiary">{proj.project_code}</span>
+                  <h3 className="font-headline-sm text-headline-sm text-text-primary truncate font-bold">{proj.project_name}</h3>
+                </div>
+                <span className={`px-2 py-0.5 rounded-full font-label-sm text-label-sm font-bold shrink-0 ${badgeBg}`}>
+                  {badgeText}
+                </span>
+              </div>
+              
+              <div className="flex items-center gap-unit-xs text-body-sm font-body-sm text-text-secondary">
+                <span className="material-symbols-outlined text-[16px] text-text-tertiary">location_on</span>
+                <span className="truncate">{proj.state_name} • {proj.sector_name}</span>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-unit-xs p-unit-xs rounded-lg bg-surface-container-low">
+                <div className="flex flex-col">
+                  <span className="font-label-sm text-label-sm text-text-tertiary uppercase">Outlay (Orig → Rev)</span>
+                  <span className="font-body-md text-body-md text-text-primary font-semibold">
+                    ₹{proj.original_cost.toLocaleString()} Cr → <span className={costColor}>₹{proj.revised_cost.toLocaleString()} Cr</span>
+                  </span>
+                  <span className={`font-label-sm text-label-sm font-medium ${costColor}`}>
+                    +{proj.cost_growth_percentage}% Breach
+                  </span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="font-label-sm text-label-sm text-text-tertiary uppercase">Milestone Lag</span>
+                  <span className={`font-body-md text-body-md font-semibold ${costColor}`}>+{proj.predicted_delay_months || 0} Months</span>
+                  <span className="font-label-sm text-label-sm text-text-secondary truncate">{proj.implementing_agency}</span>
+                </div>
+              </div>
+              
+              <div className="flex flex-col gap-1">
+                <div className="flex justify-between text-body-sm font-body-sm">
+                  <span className="text-text-secondary">Physical Progress: <strong className="text-text-primary">{proj.physical_progress}%</strong></span>
+                  <span className="text-text-secondary">Financial Expended: <strong className="text-text-primary">{proj.financial_progress}%</strong></span>
+                </div>
+                <div className="w-full h-1.5 rounded-full bg-surface-container overflow-hidden flex">
+                  <div className="h-full bg-secondary rounded-l-full" style={{ width: `${proj.physical_progress}%` }}></div>
+                  <div className={`h-full ${isCritical ? 'bg-risk-critical' : isHigh ? 'bg-risk-high' : 'bg-risk-medium'} rounded-r-full`} style={{ width: `${Math.max(0, 100 - proj.physical_progress)}%` }}></div>
+                </div>
+              </div>
+              
+              <div className="flex items-center justify-between pt-unit-xs">
+                <span className="font-label-sm text-label-sm text-text-tertiary">CS Project Code: #{proj.id}</span>
+                <button 
+                  onClick={() => triggerInterventionModal(proj.project_name)}
+                  className="px-unit-md py-1.5 rounded-lg bg-primary text-on-primary font-label-md text-label-md flex items-center gap-1 shadow-sm active:scale-95 transition-transform"
                 >
-                  {riskPieData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip 
-                  contentStyle={{ background: '#FFFFFF', borderColor: '#E2E8F0', borderRadius: '0.375rem', fontSize: '11px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 text-[11px] pt-2 border-t border-slate-100">
-            {riskPieData.map((item) => (
-              <div key={item.name} className="flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full" style={{ background: item.color }} />
-                <span className="text-slate-600">{item.name.split(' ')[0]}:</span>
-                <span className="font-bold text-slate-900">{item.value}</span>
+                  <span className="material-symbols-outlined text-[16px]">bolt</span>
+                  <span>Intervene Now</span>
+                </button>
               </div>
-            ))}
+            </article>
+          );
+        })}
+      </section>
+
+      {/* Interactive Intervention Toast Feedback */}
+      <div 
+        id="interventionToast" 
+        className={`fixed bottom-20 left-4 right-4 z-50 transform transition-all duration-300 pointer-events-none ${toastVisible ? 'translate-y-0 opacity-100' : 'translate-y-32 opacity-0'}`}
+      >
+        <div className="flex items-center gap-3 p-3 rounded-xl bg-navy-deep text-on-primary shadow-2xl">
+          <div className="w-8 h-8 rounded-full bg-risk-low/20 flex items-center justify-center text-risk-low shrink-0">
+            <span className="material-symbols-outlined text-[20px]">check</span>
           </div>
-        </div>
-
-        {/* Risk by Sector (Bar Chart) */}
-        <div className="lg:col-span-2 gov-card p-5">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                Average Cost Overrun Escalation by Sector (%)
-              </h3>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                Comparative cost growth percentage across central infrastructure domains
-              </p>
-            </div>
-            <Link href="/analytics" className="text-xs text-blue-700 hover:underline flex items-center gap-1 font-semibold">
-              <span>Full Analytics</span>
-              <ChevronRight className="h-3.5 w-3.5" />
-            </Link>
+          <div className="flex flex-col min-w-0 flex-1">
+            <span className="font-headline-sm text-headline-sm text-on-primary truncate">Intervention Triggered: {toastProjectName}</span>
+            <span className="font-label-sm text-label-sm text-surface-dim">MoSPI Inter-Ministerial memo drafted for PMO PRAGATI review.</span>
           </div>
-
-          <div className="h-56 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={sectors.slice(0, 7)} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
-                <XAxis dataKey="sector_name" stroke="#64748B" fontSize={10} tickLine={false} />
-                <YAxis stroke="#64748B" fontSize={10} tickLine={false} unit="%" />
-                <Tooltip
-                  contentStyle={{ background: '#FFFFFF', borderColor: '#E2E8F0', borderRadius: '0.375rem', fontSize: '11px' }}
-                />
-                <Bar dataKey="avg_cost_overrun_pct" fill="#1D4ED8" radius={[3, 3, 0, 0]} name="Avg Cost Overrun %" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-      </div>
-
-      {/* Row 2: Overrun & Delay Trends (Line Chart) + Ministry & State Risk Rankings */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        
-        {/* Cost Overrun & Delay Trend */}
-        <div className="lg:col-span-2 gov-card p-5">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                National Cost Overrun & Schedule Delay Trajectory
-              </h3>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                Historical monthly escalation across monitored central sector portfolios
-              </p>
-            </div>
-          </div>
-
-          <div className="h-56 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={trendData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
-                <XAxis dataKey="month" stroke="#64748B" fontSize={10} tickLine={false} />
-                <YAxis yAxisId="left" stroke="#DC2626" fontSize={10} tickLine={false} unit=" Cr" />
-                <YAxis yAxisId="right" orientation="right" stroke="#D97706" fontSize={10} tickLine={false} unit=" Mos" />
-                <Tooltip contentStyle={{ background: '#FFFFFF', borderColor: '#E2E8F0', borderRadius: '0.375rem', fontSize: '11px' }} />
-                <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }} />
-                <Line yAxisId="left" type="monotone" dataKey="cost_overrun_cr" stroke="#DC2626" strokeWidth={2} name="Cost Overrun (₹ Cr)" dot={{ r: 3 }} />
-                <Line yAxisId="right" type="monotone" dataKey="avg_delay_mos" stroke="#D97706" strokeWidth={2} name="Avg Delay (Months)" dot={{ r: 3 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Risk by Ministry & State Summary */}
-        <div className="gov-card p-5 flex flex-col justify-between space-y-4">
-          <div>
-            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-              Critical Portfolios by Ministry & State
-            </h3>
-            <p className="text-[11px] text-slate-500 mt-0.5">
-              Top capital-intensive divisions requiring coordination
-            </p>
-          </div>
-
-          <div className="space-y-2 text-xs">
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Top Ministries by Overrun</div>
-            {ministries.slice(0, 3).map((m, idx) => (
-              <div key={idx} className="p-2 bg-slate-50 border border-slate-200 rounded flex items-center justify-between">
-                <span className="font-semibold text-slate-800 truncate pr-2">{m.ministry_name.replace('Ministry of ', '')}</span>
-                <span className="font-mono text-rose-700 font-bold">+{m.avg_cost_overrun_pct}%</span>
-              </div>
-            ))}
-
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pt-2">States with Highest Project Count</div>
-            {states.slice(0, 3).map((st, idx) => (
-              <div key={idx} className="p-2 bg-slate-50 border border-slate-200 rounded flex items-center justify-between">
-                <span className="font-semibold text-slate-800">{st.state_name}</span>
-                <span className="font-mono text-blue-700 font-bold">{st.total_projects} Projects</span>
-              </div>
-            ))}
-          </div>
-
-          <Link
-            href="/map"
-            className="w-full text-center py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold rounded text-xs transition-colors border border-slate-200 block"
-          >
-            Open National Geospatial Map ➔
-          </Link>
-        </div>
-
-      </div>
-
-      {/* Main Table: Top Priority Projects Requiring Intervention */}
-      <div className="gov-card p-5 space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div>
-            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-              <ShieldAlert className="h-4 w-4 text-rose-600" />
-              <span>Top Infrastructure Projects Requiring Immediate Intervention</span>
-            </h3>
-            <p className="text-[11px] text-slate-500 mt-0.5">
-              Prioritized by multi-factor composite risk score, milestone breach rate, and budget divergence
-            </p>
-          </div>
-          <Link
-            href="/projects"
-            className="text-xs text-blue-700 hover:underline font-semibold flex items-center gap-1"
-          >
-            <span>View All Projects</span>
-            <ChevronRight className="h-3.5 w-3.5" />
-          </Link>
-        </div>
-
-        <div className="overflow-x-auto border border-slate-200 rounded-md">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-100 text-slate-600 uppercase tracking-wider font-semibold border-b border-slate-200 text-[10px]">
-              <tr>
-                <th className="py-2.5 px-3.5">Project Code & Title</th>
-                <th className="py-2.5 px-3.5">Sector & State</th>
-                <th className="py-2.5 px-3.5">Outlay (Orig ➔ Rev)</th>
-                <th className="py-2.5 px-3.5">Progress (Phys / Fin)</th>
-                <th className="py-2.5 px-3.5">Delay Forecast</th>
-                <th className="py-2.5 px-3.5">Risk Score</th>
-                <th className="py-2.5 px-3.5 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200 bg-white">
-              {projects.slice(0, 8).map((proj) => (
-                <tr key={proj.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="py-2.5 px-3.5">
-                    <Link href={`/projects/${proj.id}`} className="font-semibold text-slate-900 hover:text-blue-700 block">
-                      <span className="font-mono text-[11px] text-blue-700 mr-1.5 font-bold">{proj.project_code}</span>
-                      {proj.project_name}
-                    </Link>
-                    <div className="text-[10px] text-slate-400 mt-0.5">{proj.implementing_agency}</div>
-                  </td>
-                  <td className="py-2.5 px-3.5 text-slate-600">
-                    <div className="font-medium text-slate-800">{proj.sector_name}</div>
-                    <div className="text-[10px] text-slate-400">{proj.state_name}</div>
-                  </td>
-                  <td className="py-2.5 px-3.5 font-mono">
-                    <div className="font-bold text-slate-800">₹{proj.revised_cost.toLocaleString()} Cr</div>
-                    <div className="text-[10px] text-amber-700 font-semibold">+{proj.cost_growth_percentage}% growth</div>
-                  </td>
-                  <td className="py-2.5 px-3.5 font-mono">
-                    <div className="flex items-center gap-1">
-                      <span className="text-emerald-700 font-bold">{proj.physical_progress}%</span>
-                      <span className="text-slate-400">/</span>
-                      <span className="text-blue-700">{proj.financial_progress}%</span>
-                    </div>
-                  </td>
-                  <td className="py-2.5 px-3.5 font-mono font-bold text-rose-700">
-                    +{proj.predicted_delay_months || 0} Mos
-                  </td>
-                  <td className="py-2.5 px-3.5">
-                    <RiskBadge level={proj.risk_level || 'LOW'} score={proj.overall_risk_score} showScore />
-                  </td>
-                  <td className="py-2.5 px-3.5 text-right">
-                    <Link
-                      href={`/projects/${proj.id}`}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 hover:bg-blue-700 hover:text-white text-slate-700 border border-slate-300 rounded text-[11px] font-semibold transition-colors"
-                    >
-                      <span>Inspect 360</span>
-                      <ArrowUpRight className="h-3 w-3" />
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </div>
       </div>
 
